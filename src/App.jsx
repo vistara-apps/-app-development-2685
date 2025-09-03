@@ -5,9 +5,31 @@ import Transactions from './components/Transactions';
 import Payouts from './components/Payouts';
 import ApiSettings from './components/ApiSettings';
 import FraudDetection from './components/FraudDetection';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Login';
+import { useAuth } from './context/AuthContext';
 
-function App() {
+// Main app content component
+const AppContent = () => {
+  const { user, loading } = useAuth();
   const [activeSection, setActiveSection] = useState('dashboard');
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-purple-800 flex items-center justify-center">
+        <div className="card p-8 text-center">
+          <h2 className="text-2xl font-bold text-white mb-4">Loading...</h2>
+          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!user) {
+    return <Login />;
+  }
 
   const renderContent = () => {
     switch (activeSection) {
@@ -37,6 +59,15 @@ function App() {
         </main>
       </div>
     </div>
+  );
+};
+
+// Main App component with providers
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

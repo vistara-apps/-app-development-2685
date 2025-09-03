@@ -1,11 +1,30 @@
-import React, { useState } from 'react';
-import { Copy, Eye, EyeOff, RefreshCw, Key, Globe, Shield } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Copy, Eye, EyeOff, RefreshCw, Key, Globe, Shield, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import useApi from '../hooks/useApi';
+import { authApi } from '../services/api';
 
 const ApiSettings = () => {
+  const { user, generateApiKey, updateSubscription } = useAuth();
   const [showApiKey, setShowApiKey] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('basic');
+  const [selectedPlan, setSelectedPlan] = useState('free');
+  const [notification, setNotification] = useState(null);
   
-  const apiKey = 'spai_sk_1234567890abcdef1234567890abcdef';
+  const generateApiKeyApi = useApi(authApi.generateApiKey);
+  const updateSubscriptionApi = useApi(authApi.updateSubscription);
+  const getUsageApi = useApi(authApi.getUsage);
+  
+  // Set selected plan based on user data
+  useEffect(() => {
+    if (user?.subscriptionTier) {
+      setSelectedPlan(user.subscriptionTier);
+    }
+  }, [user]);
+  
+  // Get usage statistics
+  useEffect(() => {
+    getUsageApi.execute();
+  }, []);
   
   const plans = [
     {
@@ -37,28 +56,57 @@ const ApiSettings = () => {
   const endpoints = [
     {
       method: 'POST',
-      path: '/api/v1/payments',
+      path: '/api/payments',
       description: 'Create a new payment transaction'
     },
     {
       method: 'GET',
-      path: '/api/v1/payments/{id}',
+      path: '/api/payments/{id}',
       description: 'Get payment status and details'
     },
     {
       method: 'POST',
-      path: '/api/v1/payouts/batch',
+      path: '/api/payouts/batch',
       description: 'Create automated payout batch'
     },
     {
-      method: 'GET',
-      path: '/api/v1/fraud/analyze',
+      method: 'POST',
+      path: '/api/payments/analyze',
       description: 'Get AI fraud analysis for transaction'
     }
   ];
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
+    showNotification('API key copied to clipboard', 'success');
+  };
+  
+  const handleRegenerateApiKey = async () => {
+    try {
+      await generateApiKeyApi.execute();
+      showNotification('API key regenerated successfully', 'success');
+    } catch (error) {
+      showNotification('Failed to regenerate API key', 'error');
+    }
+  };
+  
+  const handleUpgradePlan = async () => {
+    try {
+      if (selectedPlan === user?.subscriptionTier) {
+        showNotification('You are already on this plan', 'info');
+        return;
+      }
+      
+      await updateSubscriptionApi.execute(selectedPlan);
+      showNotification(`Subscription updated to ${selectedPlan}`, 'success');
+    } catch (error) {
+      showNotification('Failed to update subscription', 'error');
+    }
+  };
+  
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   return (
@@ -68,6 +116,18 @@ const ApiSettings = () => {
         <h1 className="text-3xl font-bold text-white mb-2">API Settings</h1>
         <p className="text-white/70">Manage your API keys and integration settings</p>
       </div>
+      
+      {/* Notification */}
+      {notification && (
+        <div className={`p-4 rounded-lg flex items-center space-x-3 ${
+          notification.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+          notification.type === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+          'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+        }`}>
+          <AlertCircle className="w-5 h-5" />
+          <span>{notification.message}</span>
+        </div>
+      )}
 
       {/* API Key Management */}
       <div className="card p-6">
@@ -80,7 +140,7 @@ const ApiSettings = () => {
               <div className="flex-1 relative">
                 <input
                   type={showApiKey ? 'text' : 'password'}
-                  value={apiKey}
+                  value={user?.apiKey || ''}
                   readOnly
                   className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white font-mono text-sm pr-20"
                 />
@@ -92,16 +152,32 @@ const ApiSettings = () => {
                     {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                   <button
-                    onClick={() => copyToClipboard(apiKey)}
+                    onClick={() => copyToClipboard(user?.apiKey)}
                     className="p-1 text-white/50 hover:text-white transition-colors"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              <button className="bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-3 rounded-lg hover:bg-red-500/30 transition-colors flex items-center space-x-2">
-                <RefreshCw className="w-4 h-4" />
-                <span>Regenerate</span>
+              <button 
+                onClick={handleRegenerateApiKey}
+                disabled={generateApiKeyApi.loading}
+                className="bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-3 rounded-lg hover:bg-red-500/30 transition-colors flex items-center space-x-2 disabled:opacity-50"
+              >
+                {generateApiKeyApi.loading ? (
+                  <span className="flex items-center space-x-2">
+                    <svg className="animate-spin h-4 w-4 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Processing...</span>
+                  </span>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Regenerate</span>
+                  </>
+                )}
               </button>
             </div>
             <p className="text-white/50 text-sm mt-2">Keep your API key secure. Never share it publicly or expose it in client-side code.</p>
@@ -155,7 +231,7 @@ const ApiSettings = () => {
                 ))}
               </ul>
               
-              {selectedPlan === plan.id && (
+              {user?.subscriptionTier === plan.id && (
                 <div className="mt-4 text-center">
                   <span className="text-blue-400 text-sm font-medium">Current Plan</span>
                 </div>
@@ -165,8 +241,12 @@ const ApiSettings = () => {
         </div>
         
         <div className="mt-6 text-center">
-          <button className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-3 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200">
-            Upgrade Plan
+          <button 
+            onClick={handleUpgradePlan}
+            disabled={updateSubscriptionApi.loading || selectedPlan === user?.subscriptionTier}
+            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-3 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {updateSubscriptionApi.loading ? 'Processing...' : 'Upgrade Plan'}
           </button>
         </div>
       </div>
@@ -192,7 +272,10 @@ const ApiSettings = () => {
         </div>
         
         <div className="mt-6">
-          <button className="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2">
+          <button 
+            onClick={() => window.open('/api-docs', '_blank')}
+            className="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-lg hover:bg-white/20 transition-colors flex items-center space-x-2"
+          >
             <Globe className="w-4 h-4" />
             <span>View Full Documentation</span>
           </button>
@@ -203,25 +286,38 @@ const ApiSettings = () => {
       <div className="card p-6">
         <h3 className="text-xl font-semibold text-white mb-6">Usage This Month</h3>
         
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">847</div>
-            <div className="text-white/70 text-sm">API Calls</div>
-            <div className="text-white/50 text-xs">of 1,000 limit</div>
+        {getUsageApi.loading ? (
+          <div className="flex justify-center py-8">
+            <svg className="animate-spin h-8 w-8 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
           </div>
-          
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">99.9%</div>
-            <div className="text-white/70 text-sm">Uptime</div>
-            <div className="text-white/50 text-xs">last 30 days</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-2">
+                {getUsageApi.data?.transactionCount || 0}
+              </div>
+              <div className="text-white/70 text-sm">API Calls</div>
+              <div className="text-white/50 text-xs">
+                of {getUsageApi.data?.transactionLimit || user?.transactionLimit || 100} limit
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-2">99.9%</div>
+              <div className="text-white/70 text-sm">Uptime</div>
+              <div className="text-white/50 text-xs">last 30 days</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-white mb-2">0.12s</div>
+              <div className="text-white/70 text-sm">Avg Response</div>
+              <div className="text-white/50 text-xs">response time</div>
+            </div>
           </div>
-          
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">0.12s</div>
-            <div className="text-white/70 text-sm">Avg Response</div>
-            <div className="text-white/50 text-xs">response time</div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
